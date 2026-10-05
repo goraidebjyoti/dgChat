@@ -57,5 +57,3 @@ Packets require signed timestamps within a two-minute future skew and an expiry 
 - Android Keystore: https://developer.android.com/privacy-and-security/keystore
 - Bluetooth permissions: https://developer.android.com/develop/connectivity/bluetooth/bt-permissions
 - Android BLE background guidance: https://developer.android.com/develop/connectivity/bluetooth/ble/background
-
-No BitChat implementation was used as a security specification or code dependency.

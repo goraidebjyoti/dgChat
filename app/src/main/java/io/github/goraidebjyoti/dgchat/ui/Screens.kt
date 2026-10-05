@@ -186,7 +186,7 @@ fun DgChatScreen(model: ChatViewModel,onMesh: ()->Unit,onQuickClear: ()->Unit,on
         if(roomDialog) {var name by remember {mutableStateOf("")};AlertDialog(onDismissRequest={roomDialog=false},title={Text("Public local room")},text={Column{Text("Messages are visible to the mesh.");OutlinedTextField(name,{name=it.take(32)},label={Text("Room name")})}},confirmButton={TextButton(onClick={roomDialog=false;open("#${name.trim().lowercase().ifBlank {"local"}}")}){Text("Join room")}},dismissButton={TextButton(onClick={roomDialog=false}){Text("Cancel")}}) }
         if(about)AlertDialog(onDismissRequest={about=false},title={Text("dgChat")},text={Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
             Text("Decentralized Messaging");Text("Created by Debjyoti Gorai")
-            Text("An independent implementation inspired by decentralized communication concepts. Not an official BitChat application.")
+            Text("An independently developed decentralized messaging application.")
             Link("Website","https://goraidebjyoti.github.io");Link("GitHub","https://github.com/goraidebjyoti/");Link("debjyotigorai@outlook.com","mailto:debjyotigorai@outlook.com")
             Text("Version 0.1.1 • device validation required",style=MaterialTheme.typography.bodySmall)
         }},confirmButton={TextButton(onClick={about=false}){Text("Close")}})

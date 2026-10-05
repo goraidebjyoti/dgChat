@@ -1,6 +1,6 @@
 # dgChat binary protocol v1
 
-All multibyte fields use **big endian**. This is an independently designed protocol, not compatible with BitChat. `Packet.java` is the authoritative codec. The source/destination/message IDs are 16-byte values; all-zero destination means broadcast. Random IDs are allocated once and preserved across retries.
+All multibyte fields use **big endian**. This is an independently designed protocol. `Packet.java` is the authoritative codec. The source/destination/message IDs are 16-byte values; all-zero destination means broadcast. Random IDs are allocated once and preserved across retries.
 
 | Field | Size | Rule |
 |---|---:|---|

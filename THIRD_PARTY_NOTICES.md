@@ -1,6 +1,6 @@
 # Third-party notices
 
-Original application code and identity are dgChat / Debjyoti Gorai. No BitChat source, branding, interface assets or copy are included.
+Original application code and identity are dgChat / Debjyoti Gorai.
 
 | Dependency | Use | License / upstream |
 |---|---|---|

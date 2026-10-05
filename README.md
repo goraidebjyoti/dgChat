@@ -10,7 +10,7 @@ Native Android peer-to-peer messaging with nearby BLE mesh communication, cipher
 - **GitHub:** https://github.com/goraidebjyoti/
 - **Email:** debjyotigorai@outlook.com
 
-An independent implementation inspired by decentralized communication concepts. dgChat is **not an official BitChat application**. No BitChat code, artwork, copy, icons or branding is included.
+dgChat is an independently developed decentralized messaging application.
 
 ## Delivery status
 
