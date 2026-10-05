@@ -1,0 +1,4 @@
+# Replace relay.example.org with a domain you control. Caddy obtains a public TLS certificate.
+relay.example.org {
+    reverse_proxy 127.0.0.1:8765
+}

@@ -1,0 +1,2 @@
+-keep class com.southernstorm.noise.** { *; }
+-keepattributes Signature,InnerClasses,EnclosingMethod

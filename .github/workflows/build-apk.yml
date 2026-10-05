@@ -1,0 +1,110 @@
+name: Build dgChat APK
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: APK build type
+        type: choice
+        options: [debug, release]
+        default: debug
+permissions:
+  contents: read
+concurrency:
+  group: dgchat-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      RELEASE_REQUESTED: ${{ (github.event_name == 'workflow_dispatch' && inputs.build_type == 'release') || startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install pinned Android packages
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Set up and cache Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - name: Generate official checksum-pinned Gradle wrapper
+        run: gradle wrapper --gradle-version 8.11.1 --distribution-type bin --gradle-distribution-sha256-sum f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6
+      - name: Test JVM core and security; lint Android
+        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest
+      - name: Install pinned relay test dependency
+        run: python3 -m pip install -r relay/requirements.txt
+      - name: Test relay limits and integration
+        run: python3 -m unittest discover -s relay -p 'test_*.py' -v
+      - name: Build debug APK
+        run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Validate release-signing secrets
+        if: env.RELEASE_REQUESTED == 'true'
+        env:
+          DGCHAT_KEYSTORE_BASE64: ${{ secrets.DGCHAT_KEYSTORE_BASE64 }}
+          DGCHAT_STORE_PASSWORD: ${{ secrets.DGCHAT_STORE_PASSWORD }}
+          DGCHAT_KEY_ALIAS: ${{ secrets.DGCHAT_KEY_ALIAS }}
+          DGCHAT_KEY_PASSWORD: ${{ secrets.DGCHAT_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in DGCHAT_KEYSTORE_BASE64 DGCHAT_STORE_PASSWORD DGCHAT_KEY_ALIAS DGCHAT_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then echo "::error::Required release-signing secret is missing: $name"; exit 1; fi
+          done
+          printf '%s' "$DGCHAT_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/dgchat-release.jks"
+          chmod 600 "$RUNNER_TEMP/dgchat-release.jks"
+      - name: Build signed release APK
+        if: env.RELEASE_REQUESTED == 'true'
+        env:
+          DGCHAT_KEYSTORE: ${{ runner.temp }}/dgchat-release.jks
+          DGCHAT_STORE_PASSWORD: ${{ secrets.DGCHAT_STORE_PASSWORD }}
+          DGCHAT_KEY_ALIAS: ${{ secrets.DGCHAT_KEY_ALIAS }}
+          DGCHAT_KEY_PASSWORD: ${{ secrets.DGCHAT_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon :app:lintRelease :app:assembleRelease
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dgChat-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload release APK
+        if: env.RELEASE_REQUESTED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dgChat-release-${{ github.run_number }}
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload test APK and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dgChat-validation-${{ github.run_number }}
+          path: |
+            core/build/reports/tests/
+            app/build/reports/
+            app/build/outputs/apk/androidTest/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Clean signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/dgchat-release.jks"
+      - name: Report result
+        if: always()
+        env:
+          DGCHAT_RESULT: ${{ job.status }}
+        run: |
+          echo '## dgChat APK build' >> "$GITHUB_STEP_SUMMARY"
+          echo "Result: $DGCHAT_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Installable APKs appear under this run’s Artifacts when the build succeeds.' >> "$GITHUB_STEP_SUMMARY"

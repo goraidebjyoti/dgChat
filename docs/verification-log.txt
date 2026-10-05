@@ -1,0 +1,56 @@
+dgChat final observed checks
+
+$ bash tools/test-core.sh
+PASS: 62 assertions; 2,000 malformed packets; routing, partitions, retry policies, signatures, fragment integrity and resource limits.
+Exit: 0
+
+$ python3 -m unittest discover -s relay -p test_*.py -v
+test_opaque_forwarding_invalid_disconnect_and_cleanup (test_integration.RelayIntegrationTest.test_opaque_forwarding_invalid_disconnect_and_cleanup) ... ok
+test_backpressure_rate (test_limits.RelayLimitsTest.test_backpressure_rate) ... ok
+test_frames (test_limits.RelayLimitsTest.test_frames) ... ok
+test_global_admission (test_limits.RelayLimitsTest.test_global_admission) ... ok
+test_ip_admission_is_bounded_and_recovers (test_limits.RelayLimitsTest.test_ip_admission_is_bounded_and_recovers) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.052s
+
+OK
+Exit: 0
+
+$ python3 tools/static-check.py
+PASS: XML, reserved identifiers, missing implementation sentinels, key-file exclusion, bootstrap archive, workflow presence.
+Exit: 0
+
+$ ./gradlew --bootstrap-info
+dgChat Gradle bootstrap 8.11.1 sha256=f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6
+Exit: 0
+
+Android/Gradle bootstrap attempt: ./gradlew --version
+Observed failure: java.net.UnknownHostException: services.gradle.org
+No Android SDK is installed. Android compilation, lint, APK generation and device tests have NOT run.
+
+Workflow YAML parsed with PyYAML BaseLoader; required test, lint, signing and APK artifact steps verified.
+Shell launcher/test scripts passed syntax checks.
+
+Quick Clear update — 2026-10-05 (Asia/Kolkata)
+
+$ bash tools/test-core.sh
+PASS: 71 assertions; 2,000 malformed packets; routing, partitions, retry policies, signatures, fragment integrity and resource limits.
+Exit: 0
+
+$ python3 tools/static-check.py; python3 -m unittest discover -s relay -p test_*.py -v
+PASS: XML, reserved identifiers, missing implementation sentinels, key-file exclusion, bootstrap archive, workflow presence.
+test_opaque_forwarding_invalid_disconnect_and_cleanup (test_integration.RelayIntegrationTest.test_opaque_forwarding_invalid_disconnect_and_cleanup) ... ok
+test_backpressure_rate (test_limits.RelayLimitsTest.test_backpressure_rate) ... ok
+test_frames (test_limits.RelayLimitsTest.test_frames) ... ok
+test_global_admission (test_limits.RelayLimitsTest.test_global_admission) ... ok
+test_ip_admission_is_bounded_and_recovers (test_limits.RelayLimitsTest.test_ip_admission_is_bounded_and_recovers) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.051s
+
+OK
+Exit: 0
+
+Quick Clear Android confirmation, persistence and recovery instrumentation supplied, NOT executed. Android build/SDK limitation above still applies.
+
