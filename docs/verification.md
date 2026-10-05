@@ -35,7 +35,7 @@ Actual command logs are available in `docs/verification-log.txt`. Core/relay tes
 - Public TLS relay deployment and Android transport switching.
 - Battery/thermal/long-run behavior and independent security audit.
 
-The authoring environment has Java but no Android SDK, no Gradle installation and restricted external dependency-download access. The project supplies a clean-checkout GitHub Actions workflow to perform Android compilation, lint, tests and APK generation. That workflow **has not been launched from a GitHub repository in this task**. No build run, artifact URL or Android radio test result is fabricated.
+The authoring environment has Java but no Android SDK, no Gradle installation and restricted external dependency-download access. The project supplies a clean-checkout GitHub Actions workflow to perform Android compilation, lint, tests and APK generation. The first user-run GitHub build failed during SDK setup: setup-android@v3 requested the removed `tools` package. Both workflows now explicitly request `platform-tools`. YAML/package-policy checks pass locally. The next user-run GitHub build passed SDK setup, core tests and KSP, then failed at Kotlin compilation on an ambiguous ConcurrentHashMap `in` lookup. That lookup is now an explicit `containsKey` call. The full Android build after this correction remains pending. No successful build, APK artifact or Android radio result is claimed.
 
 ## Known scope limits
 

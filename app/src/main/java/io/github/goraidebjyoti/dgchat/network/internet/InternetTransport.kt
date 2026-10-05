@@ -26,7 +26,7 @@ class InternetTransport(private val settings: Settings,private val onIncoming: (
                 val p=settings.state.value
                 val wanted=if(p.internet)p.relays.lines().map { it.trim() }.filter { it.startsWith("wss://") }.take(3).toSet() else emptySet()
                 connections.keys.filter { it !in wanted }.forEach { url -> connections.remove(url)?.socket?.close(1000,"Disabled");retries.remove(url);retryAfter.remove(url) }
-                wanted.filter { it !in connections&&System.currentTimeMillis()>=(retryAfter[it]?:0) }.forEach { url ->
+                wanted.filter { !connections.containsKey(it)&&System.currentTimeMillis()>=(retryAfter[it]?:0) }.forEach { url ->
                     val connection=Connection();connections[url]=connection
                     runCatching {
                         val request=Request.Builder().url(url).build()

@@ -54,3 +54,16 @@ Exit: 0
 
 Quick Clear Android confirmation, persistence and recovery instrumentation supplied, NOT executed. Android build/SDK limitation above still applies.
 
+
+SDK setup correction — 2026-10-05
+User-provided GitHub build log: sdkmanager tools failed with "Failed to find package 'tools'" and exit code 1 before app compilation.
+Both setup-android@v3 steps now explicitly set packages: 'platform-tools'.
+PASS: build-apk.yml and android-tests.yml parse; SDK setup requests platform-tools only.
+PASS: repository static checks.
+Corrected GitHub workflow/Android build has not been run here.
+
+Kotlin compilation correction — 2026-10-05
+User-run GitHub build passed SDK setup, :core:test and KSP; failed at :app:compileDebugKotlin.
+Compiler rejected `it !in connections` on ConcurrentHashMap in InternetTransport.kt:29.
+Corrected to `!connections.containsKey(it)`. Other declared concurrent maps inspected for the same pattern; no additional occurrences found.
+Full Android build after this correction has not been executed here.
