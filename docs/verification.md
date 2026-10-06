@@ -2,6 +2,14 @@
 
 Delivery prepared 2026-10-06 (Asia/Kolkata). This report records observed results; it does not infer a successful Android build from source inspection.
 
+## Latest CI result and Compose lint correction (2026-10-06)
+
+The user supplied a GitHub Actions run after the Noise version correction: core tests, Android main/test Kotlin and Java compilation, Android unit tests, and debug instrumentation APK assembly completed. `:app:lintDebug` failed with 2 errors and 34 warnings; the excerpt identifies StateFlowValueCalledInComposition in the pending-delivery queue. Physical instrumentation tests were not run by this command.
+
+Corrected direct peer/group StateFlow reads across QueueDialog, SearchDialog and Conversation using collectAsStateWithLifecycle. Peer/request/group labels now observe changes. Corrected three annotated BLE assignment expressions to explicit setter calls and migrated identity copying from LocalClipboardManager to LocalClipboard with a composition coroutine scope. No lint baseline or error suppression was added.
+
+After these edits, local repository static checks and Kotlin syntax parsing of all 31 files passed. The requested Gradle command was attempted but stopped before task execution with UnknownHostException: services.gradle.org. Android compilation, lint and unit tests of this correction require another GitHub run. Historical sections below describe earlier snapshots.
+
 ## Executed and passing
 
 | Check | Observed result |

@@ -69,13 +69,14 @@ import java.util.*
 }
 @Composable fun QueueDialog(model: ChatViewModel,onDismiss: ()->Unit) {
     val pending by model.pending.collectAsStateWithLifecycle();val running by model.running.collectAsStateWithLifecycle()
+    val peers by model.peers.collectAsStateWithLifecycle()
     var now by remember {mutableLongStateOf(System.currentTimeMillis())}
     LaunchedEffect(Unit){while(true){delay(1000);now=System.currentTimeMillis()}}
     AlertDialog(onDismissRequest=onDismiss,title={Text("Pending deliveries")},text={LazyColumn(Modifier.heightIn(max=460.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
         item {TextButton(enabled=running&&pending.isNotEmpty(),onClick={model.retryAll()}){Text("Retry all now")}}
         if(pending.isEmpty())item {Text("No pending deliveries.")}
         items(pending.groupBy {it.messageId.ifBlank {it.ref.substringBefore(':')} }.entries.toList(),key={it.key}) {entry->
-            val packets=entry.value;val first=packets.first();val peer=model.peers.value.find {it.id==first.recipient}
+            val packets=entry.value;val first=packets.first();val peer=peers.find {it.id==first.recipient}
             Text("${peer?.name?:first.recipient.take(12)} • ${first.purpose}",style=MaterialTheme.typography.titleSmall)
             Text("${packets.size} pending envelope(s) • ${if(packets.any {it.state=="SENT"})"Transport accepted; awaiting recipient" else "Waiting for a usable route"}",style=MaterialTheme.typography.bodySmall)
             val left=maxOf(0L,(packets.minOf {it.expires}-now)/60000)
@@ -89,6 +90,8 @@ import java.util.*
     }},confirmButton={TextButton(onClick=onDismiss){Text("Close")}})
 }
 @Composable fun SearchDialog(model: ChatViewModel,conversation: String?,onDismiss: ()->Unit,onOpen: (String)->Unit) {
+    val peers by model.peers.collectAsStateWithLifecycle()
+    val groups by model.groups.collectAsStateWithLifecycle()
     var query by remember {mutableStateOf("")};var results by remember {mutableStateOf(emptyList<Message>())};var searching by remember {mutableStateOf(false)}
     LaunchedEffect(query,conversation) {results=emptyList();if(query.isNotBlank()){searching=true;try {delay(200);results=model.search(query,conversation)}finally {searching=false}}else searching=false}
     AlertDialog(onDismissRequest=onDismiss,title={Text(if(conversation==null)"Search local chats" else "Search conversation")},text={Column(Modifier.heightIn(max=480.dp)) {
@@ -98,7 +101,7 @@ import java.util.*
         LazyColumn(verticalArrangement=Arrangement.spacedBy(10.dp)) {items(results,key={it.id}) {message->
             val content=model.content(message)
             Column(Modifier.fillMaxWidth().clickable {onDismiss();onOpen(message.conversation)}.padding(vertical=8.dp)) {
-                Text(model.peers.value.find {it.id==message.conversation}?.name?:model.groups.value.find {it.id==message.conversation}?.title?:message.conversation,style=MaterialTheme.typography.labelMedium)
+                Text(peers.find {it.id==message.conversation}?.name?:groups.find {it.id==message.conversation}?.title?:message.conversation,style=MaterialTheme.typography.labelMedium)
                 Text((content?.let {it.text.ifBlank {it.name}}?:"Attachment").take(180))
                 Text(SimpleDateFormat("MMM d, HH:mm",Locale.getDefault()).format(Date(message.created)),style=MaterialTheme.typography.labelSmall)
             }

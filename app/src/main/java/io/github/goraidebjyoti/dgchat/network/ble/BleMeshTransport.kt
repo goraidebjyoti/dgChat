@@ -169,7 +169,7 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
                 check(gatt.setCharacteristicNotification(c,true))
                 val descriptor=c.getDescriptor(CCC)?:error("Missing CCCD")
                 if(Build.VERSION.SDK_INT>=33)check(gatt.writeDescriptor(descriptor,BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)==BluetoothStatusCodes.SUCCESS)
-                else { @Suppress("DEPRECATION") descriptor.value=BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                else { @Suppress("DEPRECATION") descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
                     @Suppress("DEPRECATION") check(gatt.writeDescriptor(descriptor)) }
             }.onFailure { close(l.key) }
         }
@@ -261,12 +261,12 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
                 if(l.central) {
                     val g=l.gatt?:return@runCatching false;val c=l.characteristic?:return@runCatching false
                     if(Build.VERSION.SDK_INT>=33)g.writeCharacteristic(c,frame,BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)==BluetoothStatusCodes.SUCCESS
-                    else { @Suppress("DEPRECATION") c.value=frame;c.writeType=BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    else { @Suppress("DEPRECATION") c.setValue(frame);c.writeType=BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
                         @Suppress("DEPRECATION") g.writeCharacteristic(c) }
                 } else {
                     val c=serverCharacteristic?:return@runCatching false;val s=server?:return@runCatching false
                     if(Build.VERSION.SDK_INT>=33)s.notifyCharacteristicChanged(l.device,c,false,frame)==BluetoothStatusCodes.SUCCESS
-                    else { @Suppress("DEPRECATION") c.value=frame
+                    else { @Suppress("DEPRECATION") c.setValue(frame)
                         @Suppress("DEPRECATION") s.notifyCharacteristicChanged(l.device,c,false) }
                 }
             }.getOrDefault(false)

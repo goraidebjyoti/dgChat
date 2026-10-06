@@ -19,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -33,6 +35,7 @@ import io.github.goraidebjyoti.dgchat.core.Bytes
 import io.github.goraidebjyoti.dgchat.data.*
 import io.github.goraidebjyoti.dgchat.ui.theme.DgTheme
 import io.github.goraidebjyoti.dgchat.ui.theme.colourScheme
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -319,12 +322,13 @@ fun QuickClearDialog(onDismiss: ()->Unit,onConfirm: ()->Unit) {
 }
 @Composable private fun IdentityDialog(title: String,name: String,fingerprint: String,code: String,onDismiss: ()->Unit) {
     val bitmap=remember(code){qr(code)}
+    val clipboard=LocalClipboard.current
+    val scope=rememberCoroutineScope()
     AlertDialog(onDismissRequest=onDismiss,title={Text(title)},text={Column(Modifier.verticalScroll(rememberScrollState()),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(12.dp)){
         Text(name);Image(bitmap.asImageBitmap(),"Public identity QR code",Modifier.size(220.dp))
         Text(fingerprint,fontFamily=FontFamily.Monospace,style=MaterialTheme.typography.bodySmall)
         Text("Let your peer scan or import this code, then compare the full fingerprint in person.",style=MaterialTheme.typography.bodySmall)
-        val clipboard=androidx.compose.ui.platform.LocalClipboardManager.current
-        TextButton(onClick={clipboard.setText(androidx.compose.ui.text.AnnotatedString(code))}){Text("Copy identity code")}
+        TextButton(onClick={scope.launch {clipboard.setClipEntry(ClipEntry(android.content.ClipData.newPlainText("dgChat identity",code)))}}){Text("Copy identity code")}
     }},confirmButton={TextButton(onClick=onDismiss){Text("Done")}})
 }
 private fun qr(code: String): Bitmap {
@@ -358,10 +362,11 @@ private fun qr(code: String): Bitmap {
     onFile: (String)->Unit,onImage: (String)->Unit,onVoice: (String)->Unit,onOpen: (Content)->Unit,onExportTransfer: (String,String)->Unit) {
     var text by rememberSaveable(id){mutableStateOf("")};var media by remember {mutableStateOf(false)}
     val transfers by model.transfers.collectAsStateWithLifecycle()
+    val peers by model.peers.collectAsStateWithLifecycle()
     val list=rememberLazyListState()
     LaunchedEffect(messages.size){if(messages.isNotEmpty())list.animateScrollToItem(messages.size-1)}
     Column(Modifier.fillMaxSize()) {
-        val peer=model.peers.value.find {it.id==id}
+        val peer=peers.find {it.id==id}
         if(peer?.requestPending==true&&!peer.blocked)Row(Modifier.fillMaxWidth().padding(8.dp)) {
             TextButton(onClick={model.acceptRequest(id)}){Text("Accept message request")}
             TextButton(onClick={model.rejectRequest(id)}){Text("Block and delete")}
@@ -376,7 +381,7 @@ private fun qr(code: String): Bitmap {
                     Surface(shape=RoundedCornerShape(18.dp),color=if(own)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                         modifier=Modifier.widthIn(max=310.dp)) {
                         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                            if(!own&&(id.startsWith("#")||id.startsWith("g:")))Text(model.peers.value.find {it.id==m.source}?.name?:"Peer ${m.source.take(6)}",style=MaterialTheme.typography.labelSmall)
+                            if(!own&&(id.startsWith("#")||id.startsWith("g:")))Text(peers.find {it.id==m.source}?.name?:"Peer ${m.source.take(6)}",style=MaterialTheme.typography.labelSmall)
                             if(body==null)Text("Protected content unavailable")
                             else {
                                 if(body.text.isNotBlank())Text(body.text,style=MaterialTheme.typography.bodyLarge)

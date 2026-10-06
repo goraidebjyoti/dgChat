@@ -110,3 +110,10 @@ Pinned org.signal.forks:noise-java:0.1.1 in app/build.gradle.kts and updated REA
 PASS: 125 core assertions and 2,000 malformed packets; repository static checks.
 Requested Android Gradle command attempted again; failed before task execution with java.net.UnknownHostException: services.gradle.org.
 Android dependency resolution, compilation, unit tests, lint and instrumentation assembly after this correction remain pending in GitHub Actions.
+
+2026-10-06: Compose lint correction
+User-run GitHub Actions: core tests, app/test compilation, Android unit tests and debug instrumentation APK assembly completed. Lint failed with 2 errors and 34 warnings.
+Corrected direct peer/group StateFlow reads in QueueDialog, SearchDialog and Conversation to collected Compose state.
+Corrected three BLE annotated assignment warnings and migrated identity-copy clipboard API.
+PASS: repository static checks; syntax-only Kotlin parser (31 files).
+Requested Android Gradle command attempted; bootstrap failed with java.net.UnknownHostException: services.gradle.org. Post-change Android lint, compilation and tests remain pending.
