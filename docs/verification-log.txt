@@ -103,3 +103,10 @@ Supplementary tree-sitter Kotlin syntax parse: 31 files, no parser errors. This 
 $ ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest
 FAILED before Gradle/Android tasks: java.net.UnknownHostException: services.gradle.org
 Android builds, supplied Noise/Room/group/file/UI tests and physical-device validation remain pending.
+
+2026-10-06: Noise dependency resolution correction
+User-run GitHub build reached :app:checkDebugAarMetadata and failed to resolve the configured Noise dependency.
+Pinned org.signal.forks:noise-java:0.1.1 in app/build.gradle.kts and updated README. The published Javadoc version index lists 0.1.1 and 0.1.0.
+PASS: 125 core assertions and 2,000 malformed packets; repository static checks.
+Requested Android Gradle command attempted again; failed before task execution with java.net.UnknownHostException: services.gradle.org.
+Android dependency resolution, compilation, unit tests, lint and instrumentation assembly after this correction remain pending in GitHub Actions.

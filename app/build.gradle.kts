@@ -58,7 +58,7 @@ dependencies {
     implementation("androidx.room:room-ktx:2.7.1")
     ksp("androidx.room:room-compiler:2.7.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.signal.forks:noise-java:0.1.3")
+    implementation("org.signal.forks:noise-java:0.1.1")
     implementation("com.google.zxing:core:3.5.3")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
