@@ -25,7 +25,7 @@ Never add the certificate private key to the dgChat repository. Follow the host'
 
 ## Transport semantics
 
-Each WebSocket carries complete `DG` v1 binary packets. The relay broadcasts each valid-sized frame to other currently connected clients. Clients verify source signatures, destinations, expiry and dedup. No relay-side directory, centralized topology, persistent cache, plaintext decryption or receipt generation exists.
+Each WebSocket carries complete `DG` v2 binary packets with 32-byte peer addresses (update the relay alongside 0.2.0 phones). The relay broadcasts each valid-sized frame to other currently connected clients. Clients verify source signatures, destinations, expiry and dedup. No relay-side directory, centralized topology, persistent cache, plaintext decryption or receipt generation exists.
 
 The relay caps concurrent clients at 64 and at 4 per IP, frames at 18,500 bytes, send queues at 8 frames and per-client input at 4 packets/sec with a burst of 20. Slow consumers are disconnected rather than accumulating memory. A shared NAT may hit the per-IP limit; change policy only after assessing load. Public rooms and public history gossip are withheld by the Android router. Signed public presence and private routing metadata can reach relays when bridging is enabled.
 

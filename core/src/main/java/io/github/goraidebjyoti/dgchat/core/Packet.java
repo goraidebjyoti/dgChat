@@ -17,7 +17,7 @@ public final class Packet {
     }
     private Packet(Type type,byte[] id,byte[] transmission,byte[] source,byte[] destination,int ttl,int initialTtl,
                   long created,long expires,byte[] signingKey,byte[] noiseKey,byte[] payload,byte[] signature) {
-        if(id.length!=16||transmission.length!=16||source.length!=16||destination.length!=16||noiseKey.length!=32) throw new IllegalArgumentException("identifier/key length");
+        if(id.length!=16||transmission.length!=16||source.length!=32||destination.length!=32||noiseKey.length!=32) throw new IllegalArgumentException("identifier/key length");
         if(ttl<0||ttl>initialTtl||initialTtl<1||initialTtl>MAX_TTL||payload.length>MAX_PAYLOAD||signingKey.length>128||signature.length>80)
             throw new IllegalArgumentException("packet bounds");
         if(created<0||expires<=created||expires-created>86400000L) throw new IllegalArgumentException("lifetime");
@@ -36,7 +36,7 @@ public final class Packet {
     private byte[] body(boolean wire) {
         try {
             ByteArrayOutputStream b=new ByteArrayOutputStream(); DataOutputStream d=new DataOutputStream(b);
-            d.writeShort(0x4447);d.writeByte(1);d.writeByte(type.ordinal());d.writeByte(wire?ttl:initialTtl);d.writeByte(initialTtl);
+            d.writeShort(0x4447);d.writeByte(2);d.writeByte(type.ordinal());d.writeByte(wire?ttl:initialTtl);d.writeByte(initialTtl);
             d.write(id);d.write(transmission);d.write(source);d.write(destination);d.writeLong(created);d.writeLong(expires);
             d.writeShort(signingKey.length);d.write(signingKey);d.write(noiseKey);d.writeInt(payload.length);d.write(payload);
             return b.toByteArray();
@@ -66,9 +66,9 @@ public final class Packet {
     public static Packet decode(byte[] wire) throws IOException {
         if(wire.length>MAX_WIRE)throw new IOException("oversize");
         try { DataInputStream d=new DataInputStream(new ByteArrayInputStream(wire));
-            if(d.readUnsignedShort()!=0x4447||d.readUnsignedByte()!=1)throw new IOException("protocol version");
+            if(d.readUnsignedShort()!=0x4447||d.readUnsignedByte()!=2)throw new IOException("protocol version");
             int t=d.readUnsignedByte();if(t>=Type.values().length)throw new IOException("packet type");
-            int ttl=d.readUnsignedByte(),initial=d.readUnsignedByte();byte[] id=read(d,16),transmission=read(d,16),src=read(d,16),dst=read(d,16);
+            int ttl=d.readUnsignedByte(),initial=d.readUnsignedByte();byte[] id=read(d,16),transmission=read(d,16),src=read(d,32),dst=read(d,32);
             long created=d.readLong(),expires=d.readLong();int k=d.readUnsignedShort();if(k>128)throw new IOException("key length");
             byte[] signing=read(d,k),noise=read(d,32);int n=d.readInt();if(n<0||n>MAX_PAYLOAD)throw new IOException("payload length");
             byte[] payload=read(d,n);int sn=d.readUnsignedShort();if(sn>80)throw new IOException("signature length");byte[] sig=read(d,sn);

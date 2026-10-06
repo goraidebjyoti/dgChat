@@ -47,4 +47,28 @@ class NoiseSecurityTest {
         rejects { Content(text="a".repeat(8001)).encode() }
         rejects { Content.decode(byteArrayOf(0,127)) }
     }
+    @Test fun v2ContentAndLegacyHistoryRoundTrip() {
+        val modern=Content(text="Private group",kind="groupMessage",thread="g:example",meta="membership")
+        val roundTrip=Content.decode(modern.encode());assertEquals(modern.text,roundTrip.text);assertEquals(modern.kind,roundTrip.kind);assertEquals(modern.meta,roundTrip.meta)
+        val legacy=java.io.ByteArrayOutputStream().also {bytes->java.io.DataOutputStream(bytes).use {out->
+            out.writeUTF("Saved chat");out.writeUTF("");out.writeUTF("text/plain");out.writeInt(0)
+        }}.toByteArray()
+        val decoded=Content.decode(legacy);assertEquals("Saved chat",decoded.text);assertEquals("chat",decoded.kind)
+        rejects {Content(meta="a".repeat(6001)).encode()}
+        rejects {Content.decode(modern.encode()+byteArrayOf(0))}
+    }
+    @Test fun groupFanoutRecipientsCannotDecryptEachOthersEnvelopes() {
+        val sender=key();val b=key();val c=key();val id=io.github.goraidebjyoti.dgchat.core.Bytes.randomId()
+        val source=io.github.goraidebjyoti.dgchat.core.Bytes.hash(sender.second)
+        val bid=io.github.goraidebjyoti.dgchat.core.Bytes.hash(b.second);val cid=io.github.goraidebjyoti.dgchat.core.Bytes.hash(c.second)
+        val text=Content(text="For both accepted members",kind="groupMessage",thread="g:example",meta="revision 1").encode()
+        val bContext=NoiseEnvelope.context(id,source,bid);val cContext=NoiseEnvelope.context(id,source,cid)
+        val forB=NoiseEnvelope.seal(sender.first,b.second,text,bContext);val forC=NoiseEnvelope.seal(sender.first,c.second,text,cContext)
+        assertArrayEquals(text,NoiseEnvelope.open(b.first,sender.second,forB,bContext))
+        assertArrayEquals(text,NoiseEnvelope.open(c.first,sender.second,forC,cContext))
+        rejects {NoiseEnvelope.open(c.first,sender.second,forB,bContext)}
+        rejects {NoiseEnvelope.open(b.first,sender.second,forC,cContext)}
+        rejects {NoiseEnvelope.open(b.first,sender.second,forB,cContext)}
+    }
+
 }

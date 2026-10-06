@@ -42,4 +42,4 @@ class Admission:
 
 def valid_frame(data):
     # Cryptographic signatures, recipient binding and expiry are verified by dgChat clients.
-    return isinstance(data, bytes) and 160 <= len(data) <= MAX_PACKET and data[:3] == b'DG\x01'
+    return isinstance(data, bytes) and 160 <= len(data) <= MAX_PACKET and data[:3] == b'DG\x02'

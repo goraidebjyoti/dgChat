@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap
 /** Dual-role BLE adapter. Every physical link has one serialized acknowledged GATT operation queue. */
 @SuppressLint("MissingPermission")
 class BleMeshTransport(private val context: Context,private val identity: Identity,private val settings: Settings,
-    private val onIncoming: (Incoming)->Unit,private val onLink: (String)->Unit): Transport {
+    private val onIncoming: (Incoming)->Unit,private val onLink: (String)->Unit,private val onLost: (String)->Unit): Transport {
     companion object {
         val SERVICE: UUID=UUID.fromString("17cf2140-768a-4e18-a1f5-993459b301d0")
         val DATA: UUID=UUID.fromString("17cf2141-768a-4e18-a1f5-993459b301d0")
@@ -35,7 +35,7 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
     private data class Link(val key: String,val device: BluetoothDevice,val central: Boolean,
         var gatt: BluetoothGatt?=null,var characteristic: BluetoothGattCharacteristic?=null,
         var mtu: Int=23,var ready: Boolean=false,var rssi: Int=-127,var lastSeen: Long=System.currentTimeMillis(),
-        var completion: CompletableDeferred<Boolean>?=null,val queue: Channel<ByteArray> = Channel(8),var job: Job?=null)
+        var completion: CompletableDeferred<Boolean>?=null,val queue: Channel<ByteArray> = Channel(8),var job: Job?=null,var timeout: Job?=null)
     override val status=MutableStateFlow("Mesh stopped")
     private val manager=context.getSystemService(BluetoothManager::class.java)
     private val links=ConcurrentHashMap<String,Link>()
@@ -45,9 +45,13 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
     private val retryCounts=ConcurrentHashMap<String,Int>()
     private val packetRate=ConcurrentHashMap<String,TokenBucket>()
     private val serverSend=Mutex()
-    private var scope: CoroutineScope?=null
+    private val lifecycleLock=Any()
+    @Volatile private var scope: CoroutineScope?=null
     private var server: BluetoothGattServer?=null
     private var serverCharacteristic: BluetoothGattCharacteristic?=null
+    @Volatile private var epoch=0L
+    private var scanCallbacks: ScanCallback?=null
+    private var advertiseCallbacks: AdvertiseCallback?=null
     private var scanning=false
     private var advertiser: BluetoothLeAdvertiser?=null
     override fun name()="BLE"
@@ -59,19 +63,23 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
         val existing=peerForLink(link)
         if(existing==null||existing==id)peerToLink[id]=link
     }
-    fun peerForLink(link: String): String?=peerToLink.entries.firstOrNull { it.value==link }?.key
+    override fun peerForLink(link: String): String?=peerToLink.entries.firstOrNull { it.value==link }?.key
     fun rssi(link: String)=links[peerToLink[link]?:link]?.rssi?:-127
     fun linkCount()=links.values.count { it.ready }
 
     override suspend fun start() {
+        synchronized(lifecycleLock) {
         if(scope!=null)return
         if(!permitted(context)){status.value="Nearby devices permission required";return}
         val adapter=manager?.adapter
         if(adapter==null||!adapter.isEnabled){status.value="Turn on Bluetooth to join the mesh";return}
         if(!adapter.isMultipleAdvertisementSupported){status.value="This device cannot advertise BLE";return}
         val s=CoroutineScope(SupervisorJob()+Dispatchers.IO);scope=s
+        val token=++epoch
+        val scan=scanCallbacks(token);scanCallbacks=scan
+        advertiseCallbacks=advertiseCallbacks(token)
         runCatching {
-            server=manager.openGattServer(context,serverCallbacks)
+            server=manager.openGattServer(context,serverCallbacks(token))
             val characteristic=BluetoothGattCharacteristic(DATA,
                 BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
                 BluetoothGattCharacteristic.PERMISSION_WRITE)
@@ -79,24 +87,25 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
             serverCharacteristic=characteristic
             val service=BluetoothGattService(SERVICE,BluetoothGattService.SERVICE_TYPE_PRIMARY).apply { addCharacteristic(characteristic) }
             check(server?.addService(service)==true) { "GATT service unavailable" }
-        }.onFailure { status.value="BLE service unavailable";stop();return }
+        }.onFailure { shutdown();status.value="BLE service unavailable";return }
         s.launch {
             while(isActive) {
-                if(!permitted(context)||manager?.adapter?.isEnabled!=true){status.value="Bluetooth unavailable";stop();return@launch}
+                if(!permitted(context)||manager?.adapter?.isEnabled!=true){stopRun(token);status.value="Bluetooth unavailable";return@launch}
                 val mode=settings.state.value.activity
                 val scanner=manager.adapter.bluetoothLeScanner
                 runCatching {
                     scanner?.startScan(listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE)).build()),
-                        ScanSettings.Builder().setScanMode(if(mode.name=="PERFORMANCE")ScanSettings.SCAN_MODE_LOW_LATENCY else ScanSettings.SCAN_MODE_BALANCED).build(),scanCallbacks)
+                        ScanSettings.Builder().setScanMode(if(mode.name=="PERFORMANCE")ScanSettings.SCAN_MODE_LOW_LATENCY else ScanSettings.SCAN_MODE_BALANCED).build(),scan)
                     scanning=true;status.value="Mesh active"
                 }.onFailure { status.value="BLE scan unavailable" }
                 delay(mode.scanMs)
-                runCatching { scanner?.stopScan(scanCallbacks) };scanning=false
+                runCatching { scanner?.stopScan(scan) };scanning=false
                 val now=System.currentTimeMillis();assembler.expire(now)
                 links.values.filter { now-it.lastSeen>180000 }.forEach { close(it.key) }
-                delay(mode.pauseMs)
+                delay(maxOf(5000L,mode.pauseMs))
             }
         }
+    }
     }
     private fun advertise() {
         if(scope==null||!permitted(context))return
@@ -106,15 +115,20 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
         val data=AdvertiseData.Builder().addServiceUuid(ParcelUuid(SERVICE)).setIncludeDeviceName(false).build()
         // Eight-byte prefix lives in scan response; full identity comes only from a signed HELLO.
         val response=AdvertiseData.Builder().addServiceData(ParcelUuid(SERVICE),identity.id.copyOf(8)).build()
-        runCatching { advertiser?.startAdvertising(settings,data,response,advertiseCallbacks) }
+        runCatching { advertiser?.startAdvertising(settings,data,response,advertiseCallbacks?:return) }
             .onFailure { status.value="BLE advertising unavailable" }
     }
-    private val advertiseCallbacks=object: AdvertiseCallback() {
-        override fun onStartFailure(errorCode: Int){status.value="BLE advertising failed ($errorCode)"}
+    private fun advertiseCallbacks(token: Long)=object: AdvertiseCallback() {
+        override fun onStartFailure(errorCode: Int){
+            if(token!=epoch||scope==null)return
+            status.value="BLE advertising failed ($errorCode)"}
     }
-    private val scanCallbacks=object: ScanCallback() {
-        override fun onScanFailed(errorCode: Int){status.value="BLE scan failed ($errorCode)";scanning=false}
+    private fun scanCallbacks(token: Long)=object: ScanCallback() {
+        override fun onScanFailed(errorCode: Int){
+            if(token!=epoch||scope==null)return
+            status.value="BLE scan failed ($errorCode)";scanning=false}
         override fun onScanResult(callbackType: Int,result: ScanResult) {
+            if(token!=epoch||scope==null)return
             val prefix=result.scanRecord?.getServiceData(ParcelUuid(SERVICE))?:return
             if(prefix.size!=8||result.rssi<settings.state.value.activity.rssi)return
             val remote=Bytes.hex(prefix);val own=Bytes.hex(identity.id.copyOf(8))
@@ -124,14 +138,15 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
             if(links.containsKey(key)||System.currentTimeMillis()<(retryAt[address]?:0))return
             synchronized(links) {
                 if(links.size>=4||links.containsKey(key))return
-                val l=Link(key,result.device,true,rssi=result.rssi);links[key]=l
-                runCatching { l.gatt=result.device.connectGatt(context,false,clientCallbacks,BluetoothDevice.TRANSPORT_LE) }
+                val l=Link(key,result.device,true,rssi=result.rssi);links[key]=l;setupTimeout(l)
+                runCatching { l.gatt=result.device.connectGatt(context,false,clientCallbacks(l),BluetoothDevice.TRANSPORT_LE) }
                     .onFailure { close(key) }
             }
         }
     }
-    private val clientCallbacks=object: BluetoothGattCallback() {
+    private fun clientCallbacks(expected: Link)=object: BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt,status: Int,newState: Int) {
+            if(links[expected.key]!==expected||(expected.gatt!=null&&expected.gatt!==gatt))return
             val key="central:${gatt.device.address}";val l=links[key]
             if(l==null){gatt.close();return}
             l.gatt=gatt
@@ -139,11 +154,13 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
             if(newState==BluetoothProfile.STATE_CONNECTED)runCatching { if(!gatt.requestMtu(247))close(key) }.onFailure { close(key) }
         }
         override fun onMtuChanged(gatt: BluetoothGatt,mtu: Int,status: Int) {
+            if(links[expected.key]!==expected||(expected.gatt!=null&&expected.gatt!==gatt))return
             val l=links["central:${gatt.device.address}"]?:return
             if(status!=BluetoothGatt.GATT_SUCCESS||mtu<80){close(l.key);return}
             l.mtu=mtu;runCatching { if(!gatt.discoverServices())close(l.key) }.onFailure { close(l.key) }
         }
         override fun onServicesDiscovered(gatt: BluetoothGatt,status: Int) {
+            if(links[expected.key]!==expected||(expected.gatt!=null&&expected.gatt!==gatt))return
             val l=links["central:${gatt.device.address}"]?:return
             val c=gatt.getService(SERVICE)?.getCharacteristic(DATA)
             if(status!=BluetoothGatt.GATT_SUCCESS||c==null){close(l.key);return}
@@ -157,57 +174,74 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
             }.onFailure { close(l.key) }
         }
         override fun onDescriptorWrite(gatt: BluetoothGatt,descriptor: BluetoothGattDescriptor,status: Int) {
+            if(links[expected.key]!==expected||(expected.gatt!=null&&expected.gatt!==gatt))return
             val l=links["central:${gatt.device.address}"]?:return
             if(status==BluetoothGatt.GATT_SUCCESS)ready(l) else close(l.key)
         }
         override fun onCharacteristicWrite(gatt: BluetoothGatt,characteristic: BluetoothGattCharacteristic,status: Int) {
+            if(links[expected.key]!==expected||(expected.gatt!=null&&expected.gatt!==gatt))return
             links["central:${gatt.device.address}"]?.completion?.complete(status==BluetoothGatt.GATT_SUCCESS)
         }
         override fun onCharacteristicChanged(gatt: BluetoothGatt,characteristic: BluetoothGattCharacteristic,value: ByteArray) {
+            if(links[expected.key]!==expected||(expected.gatt!=null&&expected.gatt!==gatt))return
             receive("central:${gatt.device.address}",value)
         }
         @Suppress("DEPRECATION")
         override fun onCharacteristicChanged(gatt: BluetoothGatt,characteristic: BluetoothGattCharacteristic) {
+            if(links[expected.key]!==expected||(expected.gatt!=null&&expected.gatt!==gatt))return
             if(Build.VERSION.SDK_INT<33)receive("central:${gatt.device.address}",characteristic.value?:return)
         }
-        override fun onReadRemoteRssi(gatt: BluetoothGatt,rssi: Int,status: Int) { links["central:${gatt.device.address}"]?.rssi=rssi }
+        override fun onReadRemoteRssi(gatt: BluetoothGatt,rssi: Int,status: Int) {
+            if(links[expected.key]!==expected||(expected.gatt!=null&&expected.gatt!==gatt))return
+            links["central:${gatt.device.address}"]?.rssi=rssi }
     }
-    private val serverCallbacks=object: BluetoothGattServerCallback() {
+    private fun serverCallbacks(token: Long)=object: BluetoothGattServerCallback() {
         override fun onServiceAdded(status: Int,service: BluetoothGattService) {
-            if(status==BluetoothGatt.GATT_SUCCESS)advertise() else this@BleMeshTransport.status.value="GATT registration failed"
+            if(token!=epoch||scope==null)return
+            if(status==BluetoothGatt.GATT_SUCCESS)advertise() else scope?.launch { stopRun(token);if(scope==null)this@BleMeshTransport.status.value="GATT registration failed" }
         }
         override fun onConnectionStateChange(device: BluetoothDevice,status: Int,newState: Int) {
+            if(token!=epoch||scope==null)return
             val key="server:${device.address}"
             if(newState==BluetoothProfile.STATE_DISCONNECTED){close(key);return}
             if(newState==BluetoothProfile.STATE_CONNECTED) {
-                synchronized(links){if(links.size>=4){server?.cancelConnection(device);return};links.putIfAbsent(key,Link(key,device,false))}
+                synchronized(links){if(links.size>=4){server?.cancelConnection(device);return};val l=Link(key,device,false);if(links.putIfAbsent(key,l)==null)setupTimeout(l)}
             }
         }
-        override fun onMtuChanged(device: BluetoothDevice,mtu: Int) { links["server:${device.address}"]?.mtu=mtu }
+        override fun onMtuChanged(device: BluetoothDevice,mtu: Int) {
+            if(token!=epoch||scope==null)return
+            links["server:${device.address}"]?.mtu=mtu }
         override fun onDescriptorWriteRequest(device: BluetoothDevice,requestId: Int,descriptor: BluetoothGattDescriptor,
             preparedWrite: Boolean,responseNeeded: Boolean,offset: Int,value: ByteArray) {
+            if(token!=epoch||scope==null)return
             val l=links["server:${device.address}"]
             val ok=l!=null&&descriptor.uuid==CCC&&!preparedWrite&&offset==0&&value.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)&&l.mtu>=80
             if(responseNeeded)server?.sendResponse(device,requestId,if(ok)BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED,0,null)
             if(ok)ready(l!!)
         }
         override fun onDescriptorReadRequest(device: BluetoothDevice,requestId: Int,offset: Int,descriptor: BluetoothGattDescriptor) {
+            if(token!=epoch||scope==null)return
             val l=links["server:${device.address}"]
             val value=if(l?.ready==true)BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE else BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
             server?.sendResponse(device,requestId,if(offset==0)BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_INVALID_OFFSET,0,value)
         }
         override fun onCharacteristicWriteRequest(device: BluetoothDevice,requestId: Int,characteristic: BluetoothGattCharacteristic,
             preparedWrite: Boolean,responseNeeded: Boolean,offset: Int,value: ByteArray) {
+            if(token!=epoch||scope==null)return
             val key="server:${device.address}";val ok=!preparedWrite&&offset==0&&characteristic.uuid==DATA&&links[key]?.ready==true&&value.size<=512
             if(responseNeeded)server?.sendResponse(device,requestId,if(ok)BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_REQUEST_NOT_SUPPORTED,0,null)
             if(ok)receive(key,value)
         }
         override fun onNotificationSent(device: BluetoothDevice,status: Int) {
+            if(token!=epoch||scope==null)return
             links["server:${device.address}"]?.completion?.complete(status==BluetoothGatt.GATT_SUCCESS)
         }
     }
+    private fun setupTimeout(l: Link) {
+        l.timeout=scope?.launch { delay(20000);if(!l.ready)close(l.key,l) }
+    }
     private fun ready(l: Link) {
-        if(l.ready)return;l.ready=true;l.lastSeen=System.currentTimeMillis();retryCounts.remove(l.device.address)
+        if(l.ready||links[l.key]!==l||scope==null)return;l.timeout?.cancel();l.ready=true;l.lastSeen=System.currentTimeMillis();retryCounts.remove(l.device.address)
         l.job=scope?.launch {
             for(packet in l.queue) {
                 var ok=true
@@ -215,7 +249,7 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
                     if(!writeFrame(l,frame)){ok=false;break}
                     delay(if(settings.state.value.activity.name=="BATTERY_SAVER")25 else 5)
                 }
-                if(!ok){close(l.key);break}
+                if(!ok){close(l.key,l);break}
             }
         }
         onLink(l.key)
@@ -252,19 +286,24 @@ class BleMeshTransport(private val context: Context,private val identity: Identi
         val key=peerToLink[nextHop]?:nextHop;val l=links[key]?:return false
         return l.ready&&l.queue.trySend(packet).isSuccess
     }
-    private fun close(key: String) {
-        val l=links.remove(key)?:return;l.ready=false;l.queue.close();l.job?.cancel();l.completion?.complete(false)
+    private fun close(key: String,expected: Link?=null) {
+        val l=if(expected==null)links.remove(key) else if(links.remove(key,expected))expected else null
+        if(l==null)return
+        val peer=peerForLink(key);onLost(peer?:key)
+        l.ready=false;l.timeout?.cancel();l.queue.cancel();l.job?.cancel();l.completion?.complete(false)
         runCatching { if(l.central){l.gatt?.disconnect();l.gatt?.close()}else server?.cancelConnection(l.device) }
         peerToLink.entries.removeIf { it.value==key };packetRate.remove(key)
         val address=l.device.address;val count=minOf(6,(retryCounts[address]?:0)+1);retryCounts[address]=count
         retryAt[address]=System.currentTimeMillis()+minOf(120000,2000L*(1L shl count))
         if(retryAt.size>256){retryAt.clear();retryCounts.clear()}
     }
-    override suspend fun stop() {
+    private suspend fun stopRun(token: Long) { synchronized(lifecycleLock) { if(epoch==token)shutdown() } }
+    override suspend fun stop() { synchronized(lifecycleLock) { shutdown() } }
+    private fun shutdown() {
         // stop can be called by a child of this scope; joining it would join ourselves.
-        scope?.cancel();scope=null
-        runCatching { if(scanning)manager?.adapter?.bluetoothLeScanner?.stopScan(scanCallbacks) };scanning=false
-        runCatching { advertiser?.stopAdvertising(advertiseCallbacks) }
+        ++epoch;scope?.cancel();scope=null
+        runCatching { if(scanning)scanCallbacks?.let { manager?.adapter?.bluetoothLeScanner?.stopScan(it) } };scanning=false
+        runCatching { advertiseCallbacks?.let { advertiser?.stopAdvertising(it) } }
         links.keys.toList().forEach { close(it) };runCatching { server?.close() };server=null
         peerToLink.clear();assembler.clear();packetRate.clear();retryAt.clear();retryCounts.clear();status.value="Mesh stopped"
     }

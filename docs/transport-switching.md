@@ -1,0 +1,11 @@
+# Mesh transports and switching
+
+Join enables BLE discovery, Nearby Wi-Fi (enabled initially; switch off in Settings if desired), and any explicitly enabled configured WSS relay. Nearby Wi-Fi uses Android NSD (`_dgchat._tcp.`) to discover TCP listeners on the same LAN/hotspot. It does not create a hotspot or use Wi-Fi Direct. Both peers must join; a router/hotspot that isolates clients or blocks multicast may prevent discovery. Hotspot-host NSD behavior varies by manufacturer.
+
+A peer keeps the same cryptographic ID and verification across all transports. No transport-specific identity or conversation is created when a route changes. There are no separate named mesh memberships: the current connected peer graph determines reachability. Distant internet peers need a shared reachable WSS relay or connected bridge; merely enabling Wi-Fi/mobile data does not discover them.
+
+The router prefers direct Wi-Fi, then direct BLE, then current learned local routes before WSS. It retains alternatives per next hop and transport. Failed sends try available alternatives; link loss invalidates only that path. New links send HELLO immediately and make pending outbox messages eligible for retry. Bluetooth off does not stop Wi-Fi or relay links. Android default-network changes discard old relay sockets and reset retry backoff; failed WebSocket setup times out. BLE setup has a 20-second timeout, and callbacks from replaced GATT links or earlier adapter runs are ignored.
+
+Yes, private delivery can cross multiple hops and transport types. Signed TTL starts at 7: a packet can be delivered at its seventh hop, but is not forwarded further. Public rooms/gossip remain on BLE/Wi-Fi and never cross the internet bridge. Duplicate private deliveries resend durable ACKs without inserting another message; Delivered always requires the expected recipient's signed ACK. Courier custody is a separate origin→custodian→recipient mechanism available over BLE and Wi-Fi.
+
+Executed tests simulate path fallback, return to BLE, a mixed BLE/Wi-Fi/internet chain, TTL and exception handling, and exercise TCP stream segmentation, invalid lengths, truncation and a real loopback socket. Android radio, NSD/hotspot, actual network handover and background behavior still require physical-device validation.

@@ -6,7 +6,7 @@ Private message/media content, private identity keys, local message history, use
 
 ## Adversaries
 
-An eavesdropper on BLE or an internet relay; an untrusted intermediary/courier; a malicious participant generating valid identities; a party replaying or altering packets; a compromised internet relay; a person who gains access to a device or copies its app database; topology churn and accidental radio failures.
+An eavesdropper on BLE, Wi-Fi LAN or an internet relay; an untrusted intermediary/courier; a malicious participant generating valid identities; a party replaying or altering packets; a compromised internet relay; a person who gains access to a device or copies its app database; topology churn and accidental radio failures.
 
 A rooted/compromised endpoint, malicious OS, coerced user, side-channel attacker or compromised cryptographic dependency is outside the confidentiality guarantee. This project has not undergone independent cryptographic or penetration review.
 
@@ -27,7 +27,7 @@ A rooted/compromised endpoint, malicious OS, coerced user, side-channel attacker
 | Flood/resource control | TTL, fixed fan-out, jitter, dedup, transfer bounds, rate buckets, queue/route/peer limits | Signed new Sybil identities and malicious TTL reset can still cause denial of service |
 | Courier copies | Origin allocates at most three distinct custodians; custodians don't spray further | Cannot stop a malicious custodian copying ciphertext or refusing delivery |
 | Optional internet | Disabled by default; only configured WSS URLs; platform TLS verification; no default backend | Relays see IP addresses and packet metadata. WSS isn't a decentralized route discovery service |
-| Public chat | Signed public payloads; BLE-only cache and gossip | Public text and profiles are intentionally readable by mesh participants |
+| Public chat | Signed public payloads; BLE/Wi-Fi-only cache and gossip | Public text and profiles are intentionally readable by mesh participants |
 
 ## Deliberate decisions
 
@@ -57,3 +57,18 @@ Packets require signed timestamps within a two-minute future skew and an expiry 
 - Android Keystore: https://developer.android.com/privacy-and-security/keystore
 - Bluetooth permissions: https://developer.android.com/develop/connectivity/bluetooth/bt-permissions
 - Android BLE background guidance: https://developer.android.com/develop/connectivity/bluetooth/ble/background
+
+## Wi-Fi LAN discovery
+
+NSD advertisements expose the public peer ID on the local network. A discovered name/address is not authentication: incoming TCP links require a valid direct signed HELLO and the same signing/Noise key pin used by BLE. TCP carries the existing signed packets and encrypted private envelopes; public rooms and profiles are readable by local participants. Length prefixes are validated before allocation, links/queues are bounded, and setup/idle reads time out. NSD spoofing can cause connection attempts or denial of service; it cannot create a verified person or decrypt private content. Only local/private/link-local/ULA addresses are used. VPN routing, hotspot implementation, client isolation and multicast filtering need device validation.
+
+
+## Optional app lock and new content features
+
+App lock requires strong Android biometric or the device PIN/pattern/password. Authentication gates foreground access, imports and exports; screenshot/recents protection is enabled while the setting is active. It does not require authentication for the vault key itself, because the background mesh must receive/store encrypted messages while locked. It does not stop networking or replace device security. OS-selected document/scanner results wait for unlock.
+
+Notifications contain generic alerts and no sender/text/media previews. Unknown private senders are stored as requests until explicitly accepted. Importing an identity accepts that peer's messages, while verification remains a separate fingerprint comparison. Blocking uses the current ID; an adversary can generate another identity. Existing local history is retained until deletion.
+
+Private groups use separately authenticated Noise envelopes for each recipient, with an owner-authorized key roster and revision checked on receipt. Group members see the roster; relays still observe routing/fanout metadata. This is not MLS. Removal/leave takes effect at different times on disconnected devices; past content is unaffected, and membership control cannot retract earlier copies. Durable Noise X fallback still lacks recipient forward secrecy.
+
+Large-file chunks are encrypted under the existing vault on disk, then authenticated/encrypted per recipient in transit. The recipient explicitly accepts an offer and verifies a complete SHA-256 digest before export. Filename/MIME are untrusted display data; disk directories use validated random transfer IDs. Exported files are outside Quick Clear and remain under user control. Size, bitmap, storage and in-flight-window limits bound allocations, but throughput/battery and physical-device recovery need testing.

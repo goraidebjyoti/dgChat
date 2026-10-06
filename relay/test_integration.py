@@ -12,7 +12,7 @@ class RelayIntegrationTest(unittest.IsolatedAsyncioTestCase):
         async with serve(relay.handle, '127.0.0.1', 0, max_size=18500) as server:
             port = server.sockets[0].getsockname()[1]
             async with connect(f'ws://127.0.0.1:{port}') as sender, connect(f'ws://127.0.0.1:{port}') as recipient:
-                payload = b'DG\x01' + bytes(250)
+                payload = b'DG\x02' + bytes(250)
                 await sender.send(payload)
                 self.assertEqual(payload, await asyncio.wait_for(recipient.recv(), 2))
                 await sender.send('not binary')

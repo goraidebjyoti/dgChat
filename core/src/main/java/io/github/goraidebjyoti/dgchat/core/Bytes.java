@@ -22,6 +22,6 @@ public final class Bytes {
         for(int i=0;i<b.length;i++){ int a=Character.digit(text.charAt(2*i),16),c=Character.digit(text.charAt(2*i+1),16);
             if(a<0||c<0) throw new IllegalArgumentException("hex digit"); b[i]=(byte)(a*16+c); } return b;
     }
-    public static byte[] peerId(byte[] signing, byte[] noise) { return Arrays.copyOf(hash(concat(signing,noise)),16); }
+    public static byte[] peerId(byte[] signing, byte[] noise) { return hash(concat(signing,noise)); }
     public static byte[] randomId() { byte[] b=new byte[16]; new SecureRandom().nextBytes(b); return b; }
 }

@@ -3,7 +3,7 @@
 **Decentralized Messaging**  
 **Created by Debjyoti Gorai**
 
-Native Android peer-to-peer messaging with nearby BLE mesh communication, ciphertext-only store-and-forward queues, and an optional internet bridge through independently operated WSS relays.
+Native Android peer-to-peer messaging with nearby BLE and same-LAN Wi-Fi mesh communication, ciphertext-only store-and-forward queues, and an optional internet bridge through independently operated WSS relays.
 
 - **Author:** Debjyoti Gorai
 - **Website:** https://goraidebjyoti.github.io
@@ -12,11 +12,14 @@ Native Android peer-to-peer messaging with nearby BLE mesh communication, cipher
 
 dgChat is an independently developed decentralized messaging application.
 
+
+**Upgrade notice:** 0.2.0 uses wire protocol v2 with 32-byte peer addresses. Update all communicating phones and your WSS relay together. Identity keys and local history are retained; saved peer addresses expand to 64 hexadecimal characters. Old identity QR codes can still be imported from their public keys. See [migration details](docs/upgrade-0.2.0.md).
+
 ## Delivery status
 
-This is a substantial **0.1.1 engineering implementation for validation**, not a security-audited production release. The Android app, real BLE/GATT adapter, routing, Noise integration, Room persistence, Compose UI, internet adapter, relay and CI configuration are supplied. **No APK or successful Android build is claimed in this delivery.** The authoring environment lacks the Android SDK and dependency-download access. See [verification.md](docs/verification.md) for exactly what ran and what remains unverified.
+This is a substantial **0.2.0 engineering implementation for validation**, not a security-audited production release. The Android app, real BLE/GATT and Wi-Fi/NSD adapters, routing, Noise integration, Room persistence, Compose UI, internet adapter, relay and CI configuration are supplied. **No APK or successful Android build is claimed in this delivery.** The authoring environment lacks the Android SDK and dependency-download access. See [verification.md](docs/verification.md) for exactly what ran and what remains unverified.
 
-The project targets Android 12–15 (minimum API 31; compile/target API 35). Airplane mode works only when the user separately re-enables Bluetooth. Android devices need BLE advertising/peripheral support for the mesh implementation.
+The project targets Android 12–15 (minimum API 31; compile/target API 35). Offline local mesh works when Bluetooth or Wi-Fi is enabled. BLE requires advertising/peripheral support and permissions; Wi-Fi peers must share a LAN/hotspot that permits discovery and client traffic. See [transport switching](docs/transport-switching.md).
 
 ## Get an APK using GitHub Actions
 
@@ -25,7 +28,7 @@ The project targets Android 12–15 (minimum API 31; compile/target API 35). Air
 3. Open **Actions → Build dgChat APK → Run workflow** and choose **debug**. Pushes to `main`/`master` and pull requests also build debug automatically.
 4. Wait for the complete run to succeed. Open the run and scroll to **Artifacts**. Download `dgChat-debug-<run number>`, unzip it, and find `app-debug.apk`.
 5. Copy that APK to an Android 12+ device. Enable “Install unknown apps” for the app opening the APK, install it, choose a display name and tap **Join nearby mesh**. Grant Nearby devices access. Notification permission is optional on Android 13+; the foreground service still needs its notification.
-6. Install the same APK on another supported device, turn Bluetooth on, and start its mesh. Use **Nearby** to open a conversation. Compare full fingerprints before marking identities verified.
+6. Install the same APK on another supported device, turn Bluetooth on or connect both devices to the same Wi-Fi/hotspot, and start its mesh. Use **Nearby** to open a conversation. Compare full fingerprints before marking identities verified.
 
 A failed workflow does not produce an installable artifact. Read the failing step and the validation reports; do not treat a successful core test as evidence that Android compilation succeeded.
 
@@ -76,18 +79,19 @@ python3 tools/static-check.py
 - **Chats:** private conversations and public rooms. Create additional public rooms by name.
 - **Nearby:** recently seen peers, connection status, approximate signal and hop count.
 - **Peers:** saved public identities; import an identity code or decode a QR image. Import never automatically verifies a person.
-- **Settings:** display name, optional public bio and local avatar, theme, activity mode, courier opt-in, relay opt-in and developer diagnostics.
+- **Settings:** display name, optional public bio and local avatar, Light/Dark/System mode, seven theme colours, activity mode, courier opt-in, nearby Wi-Fi toggle, relay opt-in and developer diagnostics.
 - **Quick Clear:** tap the clear-history icon in the top bar or **Settings → Quick Clear → Open Quick Clear**, then **Clear now**. Stops networking and deletes local chats, outbox, courier envelopes, public cache, private receipt records and temporary media. Identity, profile/settings and saved verified peers remain. Networking resumes only when you join the mesh yourself. See [Quick Clear](docs/quick-clear.md) for recovery and deletion limits.
-- **Identity:** public QR and full fingerprint. **About:** author credits and project links.
-- **Private conversation:** text, compressed images, files up to 12 KB, short voice clips. Save attachments using Android's document picker. Audio playback uses temporary app-private cache files that are deleted on completion, leaving the screen/backgrounding, or next launch.
+- **New in 0.2.0:** generic message notifications, unknown-sender requests, peer blocking/muting, queue controls, local search, selective deletion, optional biometric/device-PIN app lock, owner-controlled encrypted groups (up to 12 members), and resumable private files (up to 4 MiB). See [upgrade and features](docs/upgrade-0.2.0.md).
+- **Identity:** public QR, live camera scanner and full fingerprint. Every fresh installation generates its own keys and 256-bit ID; sharing the APK does not share an identity. Updates and Quick Clear preserve it. See [identity and appearance](docs/identity-and-appearance.md). **About:** author credits and project links.
+- **Private conversation:** text, compressed images, resumable private files up to 4 MiB, short voice clips. Save attachments using Android's document picker. Audio playback uses temporary app-private cache files that are deleted on completion, leaving the screen/backgrounding, or next launch.
 
 Private state meanings: **Queued** = awaiting a route; **Sent** = accepted by a transport, unconfirmed; **Delivered** = authenticated recipient ACK; **Read** = authenticated read receipt; **Failed/Expired** = delivery unconfirmed after retry/lifetime limits. Public broadcasts do not promise per-recipient delivery.
 
 ## Networking and security
 
-`MessageRouter` is independent of Android/Bluetooth. Direct BLE and reliable recently learned routes are preferred. Unknown routes use bounded BLE flooding, with an optional WSS bridge for eligible packets. Public room messages and gossip remain on BLE. Only opted-in internet traffic reaches configured relays.
+`MessageRouter` is independent of Android/Bluetooth. Direct Wi-Fi, direct BLE and current learned local routes are preferred. Alternative routes are retained per next hop and transport. Unknown routes use bounded local flooding, with an optional WSS bridge for eligible packets. Public room messages and gossip remain on BLE/Wi-Fi. Only opted-in internet traffic reaches configured relays.
 
-All routable packets are signed and bind the source to its ECDSA + Noise public keys. Private content is encrypted with the established Noise protocol implementation `org.signal.forks:noise-java:0.1.1`. Online endpoints negotiate **Noise XX** sessions. Persistent offline envelopes use standardized **Noise X** encryption; X envelopes do **not** provide recipient forward secrecy. Live wrapping is conditional and the durable retry may fall back to X; the app therefore displays “Encrypted” and never promises universal forward secrecy. This distinction and metadata exposure are covered in [the threat model](docs/threat-model.md).
+All routable packets are signed and bind the source to its ECDSA + Noise public keys. Private content is encrypted with the established Noise protocol implementation `org.signal.forks:noise-java:0.1.3`. Online endpoints negotiate **Noise XX** sessions. Persistent offline envelopes use standardized **Noise X** encryption; X envelopes do **not** provide recipient forward secrecy. Live wrapping is conditional and the durable retry may fall back to X; the app therefore displays “Encrypted” and never promises universal forward secrecy. This distinction and metadata exposure are covered in [the threat model](docs/threat-model.md).
 
 Android Keystore protects the signing key and local AES-GCM key. The Noise static key is wrapped by that AES key. Local message bodies are encrypted before Room insertion; the UI observes the latest 1,000 messages while retaining up to 10,000 local records; relay/courier/outbox queues contain signed ciphertext envelopes. No centralized account, phone number, email or password is required.
 
@@ -95,7 +99,7 @@ Android Keystore protects the signing key and local AES-GCM key. The Noise stati
 
 Internet bridging is disabled initially. No default third-party endpoint is configured. Two distant users must share at least one reachable relay, or participate in a connected bridge path. Merely having internet does not create a route.
 
-Run an independent relay using [relay instructions](docs/internet-relay.md). Configure its **wss://** address in Settings and opt in. You can configure up to three independently operated relays. The included relay forwards opaque signed packets, maintains no topology directory and stores no message history. It is not required for BLE.
+Run an independent relay using [relay instructions](docs/internet-relay.md). Configure its **wss://** address in Settings and opt in. You can configure up to three independently operated relays. The included relay forwards opaque signed packets, maintains no topology directory and stores no message history. It is not required for BLE or same-LAN Wi-Fi.
 
 ## Project map
 
@@ -105,6 +109,7 @@ app/src/main/java/io/github/goraidebjyoti/dgchat/
   crypto/             Keystore vault, identity, Noise X envelopes and XX sessions
   data/               Room entities/DAO, encrypted message content, preferences
   network/ble/        Discovery, advertising, GATT queues, reconnection and framing
+  network/wifi/       Same-LAN NSD discovery and bounded framed TCP links
   network/internet/   Optional multiple-WSS-relay adapter
   services/           Foreground lifecycle, messaging, retries, courier and gossip
 core/src/main/java/.../core/

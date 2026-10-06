@@ -12,7 +12,7 @@ class DgChatApp: Application() {
     override fun onCreate() {
         super.onCreate();settings=Settings(this)
         runCatching { val vault=Vault(this);val identity=Identity(this,vault)
-            service=MessageService(this,identity,vault,settings,ChatDatabase.create(this))
+            service=MessageService(this,identity,vault,settings,ChatDatabase.create(this,identity.idHex))
         }.onFailure { startupError="Your protected identity could not be opened. Restart the app. If the keys were lost, clear app data to create a new identity; previous encrypted data will be lost." }
     }
 }

@@ -6,5 +6,6 @@ interface Transport: MessageRouter.Transport {
     val status: StateFlow<String>
     suspend fun start()
     suspend fun stop()
+    fun peerForLink(link: String): String?=null
     fun bindPeer(link: String,id: String)
 }

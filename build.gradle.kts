@@ -5,4 +5,4 @@ plugins {
     id("com.google.devtools.ksp") version "2.1.20-1.0.32" apply false
 }
 
-allprojects { group = "io.github.goraidebjyoti"; version = "0.1.1" }
+allprojects { group = "io.github.goraidebjyoti"; version = "0.2.0" }

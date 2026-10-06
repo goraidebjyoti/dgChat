@@ -30,11 +30,12 @@ class RelayLimitsTest(unittest.TestCase):
         self.assertEqual({}, admission.by_ip)
 
     def test_frames(self):
-        self.assertTrue(valid_frame(b'DG\x01' + bytes(200)))
+        self.assertTrue(valid_frame(b'DG\x02' + bytes(200)))
         self.assertFalse(valid_frame('plaintext'))
+        self.assertFalse(valid_frame(b'DG\x01' + bytes(200)))
         self.assertFalse(valid_frame(b'XX\x01' + bytes(200)))
-        self.assertFalse(valid_frame(b'DG\x01' + bytes(19000)))
-        self.assertFalse(valid_frame(b'DG\x01'))
+        self.assertFalse(valid_frame(b'DG\x02' + bytes(19000)))
+        self.assertFalse(valid_frame(b'DG\x02'))
 
 if __name__ == '__main__':
     unittest.main()

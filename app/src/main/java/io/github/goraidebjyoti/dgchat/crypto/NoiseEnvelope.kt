@@ -4,7 +4,7 @@ import io.github.goraidebjyoti.dgchat.core.Bytes
 /** Noise X is a standardized one-message authenticated envelope suitable for delayed delivery. */
 object NoiseEnvelope {
     private const val NAME="Noise_X_25519_AESGCM_SHA256"
-    fun context(id: ByteArray,source: ByteArray,destination: ByteArray)=Bytes.concat("dgChat-envelope-v1".toByteArray(),id,source,destination)
+    fun context(id: ByteArray,source: ByteArray,destination: ByteArray)=Bytes.concat("dgChat-envelope-v2".toByteArray(),id,source,destination)
     fun seal(privateKey: ByteArray, recipientKey: ByteArray, plaintext: ByteArray, context: ByteArray): ByteArray {
         require(plaintext.size<=14000)
         val h=HandshakeState(NAME,HandshakeState.INITIATOR)

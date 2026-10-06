@@ -8,6 +8,8 @@ flowchart TD
     Service --> DB["Room: encrypted bodies / queues"]
     Service --> Router["MessageRouter"]
     Router --> BLE["BLE mesh adapter"]
+    Router --> WIFI["Wi-Fi LAN adapter"]
+    WIFI --> Peer
     Router --> WSS["Opt-in WSS adapter"]
     Router --> Deferred["Outbox / courier delivery"]
     BLE --> Peer["Authenticated peer packets"]
@@ -19,7 +21,7 @@ flowchart TD
 
 `MainActivity` owns Android activity-result pickers, mesh permission requests, bounded media capture and temporary playback. It does not implement routing or Bluetooth. `ChatViewModel` coordinates UI commands and Flow state. `MessageService` owns cryptographic message preparation, persistence, receipts, public cache, peer pins, retries and courier allocations. `MeshService` provides explicit foreground networking and adapter state handling.
 
-`MessageRouter` consumes transport capabilities and signed packets. Its sink requests scheduled relay jitter and application delivery. `BleMeshTransport` owns radio permissions, advertiser, scanner, central/peripheral GATT callbacks and serialized operation queues. `InternetTransport` owns configured secure WebSocket links and reconnection policy. Protocol/routing classes are free of Android and Room dependencies.
+`MessageRouter` consumes transport capabilities and signed packets. Its sink requests scheduled relay jitter and application delivery. `BleMeshTransport` owns radio permissions, advertiser, scanner, central/peripheral GATT callbacks and serialized operation queues. `WifiMeshTransport` owns NSD discovery, same-LAN sockets and bounded stream framing. `InternetTransport` owns configured secure WebSocket links and reconnection policy. Protocol/routing classes are free of Android and Room dependencies.
 
 ## Message lifecycle
 
@@ -27,18 +29,18 @@ flowchart TD
 2. Encode bounded content; seal to the recipient with Noise X, binding ID, source and recipient in the prologue.
 3. Sign the immutable packet. In one Room transaction, save its local vault-encrypted body and the signed opaque outbox packet.
 4. Prefer a live XX wrapper if the endpoint session is available for the initial send. Durable retries use the original X envelope.
-5. Allocate a fresh signed transmission ID for a retry while preserving the logical ID and encrypted payload. Select direct BLE, a current learned route, controlled BLE fan-out and, if opted in, a WSS bridge.
+5. Allocate a fresh signed transmission ID for a retry while preserving the logical ID and encrypted payload. Select direct Wi-Fi/BLE, a current learned route, controlled local fan-out and, if opted in, a WSS bridge.
 6. Set `SENT` only for transport acceptance. A validated signed ACK from the expected recipient advances to `DELIVERED` and removes the outbox transactionally.
 7. Read receipts advance to `READ` without allowing a later ACK to demote the state.
 8. A durable bounded receive ledger prevents private replays across process restarts for the packet's entire valid lifetime. Duplicate private deliveries resend the ACK; they never duplicate the local message or re-enter relay flooding.
 
 ## Routing
 
-Routes are learned from valid incoming signed source announcements/packets and expire after 90 seconds. Known routes contain a next hop and estimated hop count, not a fixed full source path. A failed route is invalidated. Source-route optimization is not implemented.
+Routes are learned from valid incoming signed source announcements/packets and expire after 90 seconds. Known routes contain a next hop and estimated hop count, not a fixed full source path. Alternative routes are retained per source/transport/next-hop. A failed link invalidates only its transport route; available alternatives are tried immediately. Peer presence is reconciled against live adapters so Bluetooth loss does not disconnect Wi-Fi/internet peers. Source-route optimization is not implemented.
 
-TTL starts at 7 unless a single-hop handoff explicitly uses 1. Relays decrement it; remaining TTL 1 may be delivered but never forwarded. Frames are link-local and only reassembled complete signed packets are eligible for routing. Forwarding dedup is bounded to 8,192 recent transmission IDs, and normal relay work is limited by a token bucket and randomized 40–219 ms delay. Fan-out is capped at four BLE neighbors.
+TTL starts at 7 unless a single-hop handoff explicitly uses 1. Relays decrement it; remaining TTL 1 may be delivered but never forwarded. Frames are link-local and only reassembled complete signed packets are eligible for routing. Forwarding dedup is bounded to 8,192 recent transmission IDs, and normal relay work is limited by a token bucket and randomized 40–219 ms delay. Fan-out is capped at four neighbors per local transport.
 
-WSS is an optional second transport. Unknown BLE reachability can trigger both controlled mesh transmission and an internet copy. Successful direct BLE or current learned-route acceptance prefers that path; absent a recipient ACK, outbox retries recover a stale route. An internet-origin packet can bridge into BLE, while dedup/TTL control echoes. Public-room packets and gossip are never sent through WSS.
+WSS is an optional internet transport. Unknown local reachability can trigger both controlled mesh transmission and an internet copy. Successful direct Wi-Fi/BLE or current learned-route acceptance prefers that path; absent a recipient ACK, outbox retries recover a stale route. An internet-origin packet can bridge into BLE/Wi-Fi, while dedup/TTL control echoes. Public-room packets and gossip are never sent through WSS.
 
 ## Persistent bounds
 
@@ -52,6 +54,7 @@ WSS is an optional second transport. Unknown BLE reachability can trigger both c
 | Routing table / saved peers | 2,048 routes / saved peers |
 | Fragment assembly | 16 transfers, 300 KB total, 30-second expiry |
 | Physical BLE links | 4; each has 8 pending packets |
+| Wi-Fi TCP links | 8; 8 pending packets per link; 10-second initial read, 5-second authentication completion; 90-second idle read |
 | WebSocket links | Up to 3; refuse send above 128 KB local socket queue |
 
 Courier handoff is intentionally origin-to-custodian-to-recipient. Custodians never re-spray, so honest peers cannot expand copy budgets through recursive forwarding. A malicious peer can copy ciphertext; an honest-protocol quota cannot cryptographically stop that.
@@ -61,3 +64,16 @@ Scanning is duty cycled by Performance/Balanced/Battery Saver settings. Reconnec
 ## Quick Clear lifecycle
 
 Application-owned cleanup gates new work synchronously, pauses transports, joins the retry lifecycle and serializes deletion with message processing. One Room transaction clears history-related tables while preserving peers. A durable marker allows retry after process death. Cutoff and generation checks reject old cached packets and callbacks; UI state is reset and networking needs an explicit restart. Details and limits are in [quick-clear.md](quick-clear.md).
+
+
+## Version 0.2.0 additions
+
+Wire-v2 addresses are the full 32-byte public-key hash. Room migration expands the old peer/local references without replacing keys or encrypted local bodies. The startup upgrade re-encrypts recoverable old queued local messages for v2 recipients; foreign signed courier/public cache bytes are discarded. Start waits for the upgrade.
+
+The outbox maps independently signed packet IDs to local logical messages. Group fanout has one durable envelope/delivery row per recipient, while its logical ID stays inside encrypted group content. A member accepts only messages matching its current owner-authorized roster/revision and an explicitly joined, active group.
+
+Files use disk-backed encrypted 8 KiB chunks and a persistent receipt bitmap, separate from short-lived BLE GATT fragment assembly. A recipient must accept the offer; retries, probes and fresh resume controls survive transport changes. The receiver verifies the whole-file digest before export. Pausing cancels pending chunk/control envelopes; resumption re-offers/probes and requests missing chunks. Eight retained transfers and 32 MiB aggregate storage bound the files.
+
+Unknown private senders enter requests rather than normal chats. Block/mute controls persist with the peer identity. Conversation deletion cancels matching durable work, deletes chunks and records a cutoff while retaining bounded private receipt records to suppress replay. Quick Clear removes all history/transfer work and chunks while preserving keys, peer controls, settings and group memberships.
+
+Optional app lock protects the foreground UI with Android strong biometrics or device credentials; background networking keeps working. File/scanner results wait for unlock before importing/exporting. Notifications contain only a generic alert, never decrypted content or sender identity.

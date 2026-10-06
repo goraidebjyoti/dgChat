@@ -67,3 +67,39 @@ User-run GitHub build passed SDK setup, :core:test and KSP; failed at :app:compi
 Compiler rejected `it !in connections` on ConcurrentHashMap in InternetTransport.kt:29.
 Corrected to `!connections.containsKey(it)`. Other declared concurrent maps inspected for the same pattern; no additional occurrences found.
 Full Android build after this correction has not been executed here.
+
+2026-10-06: dgChat 0.1.2 clear/navigation and transport recovery
+$ bash tools/test-core.sh
+PASS: 95 assertions; 2,000 malformed packets; routing, partitions, retry policies, signatures, fragment integrity and resource limits.
+
+$ python3 -m unittest discover -s relay -p test*.py
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.037s
+
+OK
+
+$ python3 tools/static-check.py
+PASS: XML, reserved identifiers, missing implementation sentinels, key-file exclusion, bootstrap archive, workflow presence.
+
+Android command attempted; failed before Gradle initialization: java.net.UnknownHostException: services.gradle.org. Android compiler/lint/instrumentation not run.
+
+2026-10-06: dgChat 0.1.3 identity/appearance
+Source identity review: first-launch P-256/X25519 key generation; SHA-256-derived 128-bit peer ID; QR public keys; no packaged user identity.
+PASS: seven palettes × light/dark sRGB contrast role checks; minimum checked text contrast 6.46:1.
+PASS: launcher/round/adaptive/monochrome resource XML references; vector design preview inspected.
+PASS: 95 core assertions and 2,000 malformed packets; five relay tests; repository static checks.
+Android SDK/Gradle absent; Android compiler, expanded Compose/settings instrumentation and physical launcher checks remain pending.
+
+
+2026-10-06: dgChat 0.2.0 protocol/features
+$ bash tools/test-core.sh
+PASS: 125 assertions; 2,000 malformed packets; routing, partitions, retry policies, signatures, fragment integrity and resource limits.
+$ python3 -m unittest discover -s relay -p 'test_*.py' -v
+PASS: 5 tests, including opaque local WebSocket forwarding, limits, and wire-v1 rejection.
+$ python3 tools/static-check.py
+PASS: XML, reserved identifiers, missing implementation sentinels, key-file exclusion, bootstrap archive, workflow presence.
+Supplementary tree-sitter Kotlin syntax parse: 31 files, no parser errors. This is not type checking, Android compilation or lint.
+$ ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest
+FAILED before Gradle/Android tasks: java.net.UnknownHostException: services.gradle.org
+Android builds, supplied Noise/Room/group/file/UI tests and physical-device validation remain pending.
